@@ -1,6 +1,12 @@
 根据ljy65535的脚本修改而来
 链接如下：https://github.com/ljy65535/busiyimigong/tree/master
 
+本项目基于mumu模拟器以及python3.8.19开发。
+mumu模拟器需要安装v2ray，并且配置好v2ray。
+OCR模型权重需要自行下载，链接如下：
+    1. 检测模型：https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_det_server_infer.tar
+    2. 识别模型：https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_rec_server_infer.tar
+在本项目根目录解压
 
 ### mumu模拟器显示设置
 ![Alt text](image.png)
@@ -20,6 +26,7 @@ python version:3.8.19
 
 运行main.py之后，会弹出如下页面：
 ！[Alt text](main.png)
+
 
 黑永恒使用前提：
 要求有一张石肤、地震、诅咒术和多张死波，并且当前在9层或者19层（清完怪）。

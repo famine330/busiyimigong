@@ -36,7 +36,6 @@ class App:
         self.start_button_equip.grid(row=2, column=0, padx=10, pady=10)
     
         self.handle = basic.get_handle()
-        self.ocr = basic.hub.Module(name="ch_pp-ocrv3", enable_mkldnn=False)
     
     def run_sl_pool(self):
         self.start_button.config(state=tk.DISABLED)
@@ -53,7 +52,7 @@ class App:
     
     def execute_sl_pool(self):
         try:
-            basic.SL_pool(handle=self.handle, ocr=self.ocr)
+            basic.SL_pool(handle=self.handle)
             messagebox.showinfo("完成", "黑水池执行完毕")
         except Exception as e:
             messagebox.showerror("错误", f"执行过程中发生错误: {str(e)}")
@@ -63,7 +62,7 @@ class App:
     def execute_sl_body(self, star):
         try:
             # 接收参数并传递给basic.SL_body函数
-            basic.SL_body(handle=self.handle, ocr=self.ocr, star=star)
+            basic.SL_body(handle=self.handle, star=star)
             messagebox.showinfo("完成", "黑尸体执行完毕")
         except Exception as e:
             messagebox.showerror("错误", f"执行过程中发生错误: {str(e)}")
@@ -72,7 +71,7 @@ class App:
             
     def execute_sl_equip(self):
         try:
-            basic.SL_equip(handle=self.handle, ocr=self.ocr)
+            basic.SL_equip(handle=self.handle)
             messagebox.showinfo("完成", "黑永恒执行完毕")
         except Exception as e:
             messagebox.showerror("错误", f"执行过程中发生错误: {str(e)}")

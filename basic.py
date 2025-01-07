@@ -2,6 +2,7 @@ import win32con, win32api
 import win32gui
 import pyautogui
 import paddlehub as hub
+
 import copy
 
 import sys, os
@@ -10,6 +11,8 @@ import time
 import cv2
 
 from PyQt5.QtWidgets import QApplication
+from paddleocr import PaddleOCR, draw_ocr
+from PIL import Image
 import qimage2ndarray
 
 import numpy as np
@@ -26,6 +29,7 @@ class HANDLE():
     def __init__(self, handle_id) -> None:
         self.handle_id = handle_id       # 句柄ID
         self.left, self.top, self.right, self.bottom = win32gui.GetWindowRect(self.handle_id)    # 窗口长宽高
+        self.ocr = PaddleOCR(lang="ch", use_angle_cls=False, use_gpu=False, det_model_dir="./ch_PP-OCRv4_det_server_infer", rec_model_dir="./ch_PP-OCRv4_rec_server_infer", enable_mkldnn=True)
 
 
 
@@ -306,9 +310,9 @@ def find_and_click_image(handle: HANDLE, template_paths, sleep_time=0, match_thr
         print(f"发生错误: {e}")
 
 
-def find_text_center(handle: HANDLE, tar_txts, timeout=10, interval=0.1, ocr=None, debug=False, region=None):
+def find_text_center(handle: HANDLE, tar_txts, timeout=5, interval=1, debug=False, region=None):
     start_time = time.time()
-    print("开始查找文本")
+    print(f"开始查找{tar_txts}")
 
     while time.time() - start_time < timeout:
         try:
@@ -324,56 +328,50 @@ def find_text_center(handle: HANDLE, tar_txts, timeout=10, interval=0.1, ocr=Non
                 if debug:
                     print(f"裁剪区域: ({x1}, {y1}, {x2}, {y2})")
             
-            result = ocr.recognize_text(images=[img])
+            result = handle.ocr.ocr(img)
             if debug:
                 print(f"检测到文本：{result}")
             
-            if len(result[0]['data']) > 0:
-                for item in result[0]['data']:
-                    # print(item)
-                    det_texts = item['text']
+            if len(result[0]) > 0:
+                for item in result[0]:
+                    
+                    det_texts = item[-1][0]
+                    det_confidence = item[-1][1]
                     
                     if debug:
-                        print(f"检测到：{det_texts}")
+                        print(f"检测到：{det_texts}, 置信度：{det_confidence}")
 
                     if any(tar_txt in det_texts for tar_txt in tar_txts):
-                        print("找到！！！")
-                        # 获取文本框的坐标
-                        if 'text_box_position' in item:
-                            # 获取文本框的四个顶点坐标
-                            points = item['text_box_position']
-                            # 计算边界框的左上角和右下角坐标
-                            x1 = min(point[0] for point in points)
-                            y1 = min(point[1] for point in points)
-                            x2 = max(point[0] for point in points)
-                            y2 = max(point[1] for point in points)
-                            # 计算中心位置
-                            center_x = (x1 + x2) // 2
-                            center_y = (y1 + y2) // 2
+                        print(f"找到！！！{det_texts}")
+                        # 获取文本框的四个顶点坐标
+                        points = item[0]
+                        # 计算边界框的左上角和右下角坐标
+                        x1 = min(point[0] for point in points)
+                        y1 = min(point[1] for point in points)
+                        x2 = max(point[0] for point in points)
+                        y2 = max(point[1] for point in points)
+                        # 计算中心位置
+                        center_x = (x1 + x2) // 2
+                        center_y = (y1 + y2) // 2
+                        
+                        # 如果指定了region，需要将坐标转换为原始图像上的绝对坐标
+                        if region:
+                            center_x += x1
+                            center_y += y1
+                        
+                        if debug:
+                            result = result[0]
+                            image = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                            boxes = [line[0] for line in result]
+                            txts = [line[1][0] for line in result]
+                            scores = [line[1][1] for line in result]
+                            im_show = draw_ocr(image, boxes, txts, scores, font_path='/path/to/PaddleOCR/doc/fonts/simfang.ttf')
+                            im_show = Image.fromarray(im_show)
+                            im_show.save('result.jpg')
                             
-                            # 如果指定了region，需要将坐标转换为原始图像上的绝对坐标
-                            if region:
-                                center_x += x1
-                                center_y += y1
-                            
-                            if debug:
-                                print(f"坐标: ({center_x}, {center_y})")
-                                
-                            
-                            # 可视化调试
-                            if debug:
-                                # 绘制文本框
-                                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                                # 绘制中心点
-                                cv2.circle(img, (center_x, center_y), 5, (0, 0, 255), -1)
-                                # 显示图像
-                                cv2.imshow("Detected Text", img)
-                                cv2.waitKey(0)
-                                cv2.destroyAllWindows()
-                            
-                            return (center_x, center_y)
-                        else:
-                            print("错误: 'text_box_position' 键不存在于 item 中")
+                        return (int(center_x), int(center_y))
+            else:
+                continue
         except Exception as e:
             print(f"发生错误: {e}")
         
@@ -382,23 +380,23 @@ def find_text_center(handle: HANDLE, tar_txts, timeout=10, interval=0.1, ocr=Non
     print("超时未找到匹配文本")
     return False   
 
-def find_and_click_text(handle: HANDLE, tar_txts, timeout=10, interval=0.1, ocr=None, debug=False, sleep_time=0, region=None):
+def find_and_click_text(handle: HANDLE, tar_txts, timeout=5, interval=1, debug=False, sleep_time=0, region=None):
     try:
-        det_pos = find_text_center(handle, tar_txts, timeout, interval, ocr, debug, region)
+        det_pos = find_text_center(handle, tar_txts, timeout, interval, debug, region)
         left_mouse_click(handle, det_pos)
         time.sleep(sleep_time)
         return True
     except Exception as e:
         print(f"发生错误: {e}")
         
-def push_one_squence(handle: HANDLE, ocr=None):
+def push_one_squence(handle: HANDLE):
     time.sleep(0.5)
     # print("点击右下角", end=' ')
     left_mouse_click(handle=handle, point=(0.854167,0.939063), normalize=True, size=(519, 923))        
-    find_and_click_text(handle=handle, tar_txts=["阶位"], ocr=ocr)
+    find_and_click_text(handle=handle, tar_txts=["阶位"])
     time.sleep(0.5)
-    if find_and_click_text(handle=handle, tar_txts=["治疗术", "石肤术", "祝福术"], ocr=ocr, sleep_time=1):
-        find_and_click_text(handle=handle, tar_txts=["治疗术", "石肤术", "祝福术"], ocr=ocr)
+    if find_and_click_text(handle=handle, tar_txts=["治疗术", "石肤术", "祝福术"], sleep_time=1):
+        find_and_click_text(handle=handle, tar_txts=["治疗术", "石肤术", "祝福术"])
         print("""使用了[治疗术", "石肤术", "祝福术"]中的一个""")
 
 # 截图默认在（1280， 720下截图，读取图片时候做大小变换）, 不然模板匹配的时候会出错
@@ -430,26 +428,27 @@ def imread(handle:HANDLE, img_path):
 
 
 # 小sl
-def SL_basic(handle:HANDLE, ocr):
+def SL_basic(handle:HANDLE):
     # basic.load_mumu_video(self.handle, "./img/mumu_video/小xl.mmor")
     find_and_click_image(handle, ["./img/common/setting.png"])
     find_and_click_image(handle, ["./img/common/account.png"])
-    find_and_click_text(handle, ["登出"], ocr=ocr, sleep_time=5)
-    find_and_click_text(handle, ["开始游戏"], ocr=ocr, sleep_time=5)
-    find_and_click_text(handle, ["确定"], ocr=ocr)
-    find_and_click_text(handle, ["继续冒险"], ocr=ocr, sleep_time=5)
+    time.sleep(1)
+    find_and_click_text(handle, ["登出"], sleep_time=5)
+    find_and_click_text(handle, ["开始游戏"], timeout=10, sleep_time=8)
+    find_and_click_text(handle, ["确定"], sleep_time=1)
+    find_and_click_text(handle, ["继续冒险"], sleep_time=5)
     
     while True:
         if find_image_center(handle, ["./img/common/setting.png"]):
             break
 
 # 暂离
-def save_staute(handle:HANDLE, ocr):
+def save_staute(handle:HANDLE):
     left_mouse_click(handle=handle, point=(0.0847222,0.0351563), normalize=True)   # 点左上角
     time.sleep(1)
-    find_and_click_text(handle, ["暂离"], ocr=ocr, sleep_time=5)
+    find_and_click_text(handle, ["暂离"], sleep_time=5)
     
-    find_and_click_text(handle, ["确定"], ocr=ocr)
+    find_and_click_text(handle, ["确定"], sleep_time=1)
     # find_and_click_text(handle, ["重新连接"], 1, ocr=ocr)
     find_and_click_image(handle, ["./img/common/back2.png"], sleep_time=5)
     while True:
@@ -479,73 +478,77 @@ def go_back_to_home(handle: HANDLE):
     time.sleep(0.1)
     win32api.keybd_event(36,0,win32con.KEYEVENTF_KEYUP,0)  
 
+def check_sunshine_number(handle):
+    find_and_click_image(handle, "./img/shenduan/armor.png",sleep_time=1)
+    find_and_click_text(handle, "神力刻印")
+    
+    pass
+
     # 神锻黑尸体
-def SL_body(handle: HANDLE, ocr=None, star=False, debug=False)->bool:
-    save_staute(handle=handle, ocr=ocr)
+def SL_body(handle: HANDLE, star=False, debug=False)->bool:
+    save_staute(handle=handle)
     # 检查尸体位置
     dts_pos = find_image_center(handle, ["./img/shenduan/body.png", "./img/shenduan/body_9.png", "./img/shenduan/weapenpile.png"], match_threshold=0.7)
     need_sl = False
-    while len(dts_pos)==0:
+    while dts_pos is None:
         print("没有检测到尸体，尝试推序规避时停影响")
-        push_one_squence(handle, ocr=ocr)
-        dts_pos = find_image_center(handle, ["./img/shenduan/body.png", "./img/shenduan/body_9.png", "./img/shenduan/weapenpile.png"], match_threshold=0)
+        push_one_squence(handle)
+        dts_pos = find_image_center(handle, ["./img/shenduan/body.png", "./img/shenduan/body_9.png", "./img/shenduan/weapenpile.png"], match_threshold=0.7)
         need_sl = True
         
-    
     ##火神判断
     
     print("尸体像素位置：", dts_pos)
     
     if need_sl:
-        SL_basic(handle=handle, ocr=ocr)
-
+        SL_basic(handle=handle)
     continue_flag = True
     order = 0
     while continue_flag:     
         print(f"第{order}次   "*5)
-        
-
 
         # 直接推序1次
         if order != 0:
             
             firegod_pos = find_image_center(handle, ["./img/shenduan/red_body.png", "./img/shenduan/firegod.png", "./img/shenduan/weapon.png"], timeout=3, interval=1)
             if firegod_pos is None:
-                push_one_squence(handle, ocr=ocr)
+                time.sleep(0.5)
+                push_one_squence(handle)
 
         print("推序完成")
         # 暂离保存，不用重复推序
-        save_staute(handle=handle, ocr=ocr)
+        save_staute(handle=handle)
 
         # 点击尸体并翻找
         left_mouse_click(handle=handle, point=dts_pos)
-        find_and_click_text(handle=handle, tar_txts=["翻找"], ocr=ocr)
+        time.sleep(1)
+        find_and_click_text(handle=handle, tar_txts=["翻找"])
 
         # 检测是否为日光
         if star == False:
-            result = find_text_center(handle, ["日", "日光"], timeout=3, interval=0.01, ocr=ocr, region= ((0.05,0.85), (0.3,0.95)), debug=debug)
+            result = find_text_center(handle, ["日", "日光"], timeout=3, interval=0.01, region= ((0.075,0.85), (0.17,0.91)), debug=debug)
         else:
-            result = find_text_center(handle, ["日", "日光", "星", "星光"], timeout=3, interval=0.01, ocr=ocr, region= ((0.05,0.85), (0.3,0.95)), debug=debug)
+            result = find_text_center(handle, ["日", "日光", "星", "星光"], timeout=3, interval=0.01, region= ((0.075,0.85), (0.17,0.91)), debug=debug)
         if result:
-            save_staute(handle=handle, ocr=ocr)
+            save_staute(handle=handle)
             return True 
 
         order+=1
 
-        SL_basic(handle=handle, ocr=ocr)
+        SL_basic(handle=handle)
         
     return True    
 
 
-def SL_pool(handle: HANDLE, ocr=None, debug=False)->bool:
+def SL_pool(handle: HANDLE, debug=False)->bool:
     # 检查水池位置
-    save_staute(handle=handle, ocr=ocr)
+    save_staute(handle=handle)
     
     dts_pos = find_image_center(handle, ["./img/shenduan/pool.png"], match_threshold=0.8)
     need_sl =  False
-    while len(dts_pos)==0:
+    while dts_pos is None:
         print("没有检测到水池，尝试推序规避时停影响")
-        push_one_squence(handle,ocr=ocr)
+        push_one_squence(handle)
         dts_pos = find_image_center(handle, ["./img/shenduan/pool.png"], match_threshold=0.8)
         need_sl = True
 
@@ -553,7 +556,7 @@ def SL_pool(handle: HANDLE, ocr=None, debug=False)->bool:
     print("水池像素位置：", dts_pos)
     
     if need_sl:
-        SL_basic(handle=handle, ocr=ocr)
+        SL_basic(handle=handle)
 
     continue_flag = True
     order = 0
@@ -567,29 +570,29 @@ def SL_pool(handle: HANDLE, ocr=None, debug=False)->bool:
             
             firegod_pos = find_image_center(handle, ["./img/shenduan/red_body.png", "./img/shenduan/firegod.png", "./img/shenduan/weapon.png"], timeout=3, interval=1)
             if firegod_pos is None:
-                push_one_squence(handle,ocr=ocr)
+                push_one_squence(handle)
 
         print("推序完成")
         # 暂离保存，不用重复推序
-        save_staute(handle=handle, ocr=ocr)
+        save_staute(handle=handle)
 
         # 点击尸体并翻找
         left_mouse_click(handle=handle, point=dts_pos)
         time.sleep(1)
         
-        find_and_click_text(handle=handle, tar_txts=["浸泡铠甲"], ocr=ocr)
+        find_and_click_text(handle=handle, tar_txts=["浸泡铠甲"])
 
         # 检测是否为日光
-        result = find_text_center(handle, ["布武"], timeout=3, interval=0.01, ocr=ocr, region= ((0.20,0.30), (0.72,0.36)), debug=debug)
+        result = find_text_center(handle, ["布武"], timeout=3, interval=0.01, region= ((0.25,0.32), (0.72,0.36)), debug=debug)
         if result:
             print("找到了布武!!!")
-            save_staute(handle=handle, ocr=ocr)
+            save_staute(handle=handle)
             return True
 
         order+=1
         print("没找到,开始小sl")
 
-        SL_basic(handle=handle, ocr=ocr)
+        SL_basic(handle=handle)
 
     
     return True
@@ -632,7 +635,7 @@ def use_death_ripper(handle):
     left_mouse_click(handle=handle, point=(0.498611,0.947656), normalize=True)
     time.sleep(2)
 
-def get_lack_equipment(handle, ocr, equip_dict):
+def get_lack_equipment(handle, equip_dict):
     equip_dict_copy = copy.deepcopy(equip_dict)
     find_and_click_image(handle, ["./img/common/equip_pack.png"])
     for k, v in equip_dict.items():
@@ -640,21 +643,22 @@ def get_lack_equipment(handle, ocr, equip_dict):
         det_pos = find_image_center(handle, [v])
         if det_pos is not None:
             del equip_dict_copy[k]
+    find_and_click_text(handle=handle, tar_txts=["返回"], sleep_time=1)
     return list(equip_dict_copy.keys())
-def SL_equip(handle:HANDLE, ocr=None, target_suit=Eternal_suit):
+def SL_equip(handle:HANDLE, target_suit=Eternal_suit):
     
-    equip_name_list = get_lack_equipment(handle, ocr, target_suit)
+    equip_name_list = get_lack_equipment(handle, target_suit)
     print(f"缺少装备：{equip_name_list}")
     if len(equip_name_list) == 0:
         return True
     ops = 0
     while ops < 101:
         print(f"这是第{ops}次黑装备     "*4)
-        save_staute(handle, ocr)
+        save_staute(handle)
         print("检查是否断网")
         change_network_state(handle=handle)
         time.sleep(5)
-        find_and_click_image(handle, ["./img/common/open_door.png"], sleep_time=3)
+        find_and_click_image(handle, ["./img/common/open_door.png"], sleep_time=5)
         
         # 使用卷轴杀怪
         use_quake(handle)
@@ -666,32 +670,32 @@ def SL_equip(handle:HANDLE, ocr=None, target_suit=Eternal_suit):
 
         # 点击宝箱
         find_and_click_image(handle, ["./img/common/equip_box.png"])
-        result = find_text_center(handle, equip_name_list, timeout=3, interval=0.01, ocr=ocr, region= ((0.05,0.85), (0.3,0.95)))
+        result = find_text_center(handle, equip_name_list, timeout=3, interval=0.01, region= ((0.075,0.85), (0.17,0.91)))
         if result:
             # 联网保存
             change_network_state(handle=handle)
-            save_staute(handle, ocr=ocr)
+            save_staute(handle)
             return True
         else:
             ops+=1
             # 小SL
             find_and_click_image(handle, ["./img/common/setting.png"], sleep_time=3)
             find_and_click_image(handle, ["./img/common/account.png"], sleep_time=3)
-            find_and_click_text(handle, ["登出"], ocr=ocr, sleep_time=8)
+            find_and_click_text(handle, ["登出"], sleep_time=8)
             while not find_image_center(handle, ["./img/common/startgame.png"]):
                 time.sleep(1)
             change_network_state(handle=handle)
             time.sleep(10)
-            find_and_click_text(handle, ["我知道了"], sleep_time=3, ocr=ocr)     
-            find_and_click_text(handle, ["开始游戏"], sleep_time=5, ocr=ocr)     
-            find_and_click_text(handle, ["确定"], ocr=ocr) 
-            find_and_click_text(handle, ["继续冒险"], sleep_time=5, ocr=ocr) 
+            find_and_click_text(handle, ["我知道了"], sleep_time=3)     
+            find_and_click_text(handle, ["开始游戏"], sleep_time=5)     
+            find_and_click_text(handle, ["确定"], sleep_time=1) 
+            find_and_click_text(handle, ["继续冒险"], sleep_time=5) 
             
     else:
         print("超过了101次，需要大SL")
         find_and_click_image(handle, ["./img/common/setting.png"], sleep_time=3)
         find_and_click_image(handle, ["./img/common/account.png"], sleep_time=3)
-        find_and_click_text(handle, ["登出"], ocr=ocr, sleep_time=8)
+        find_and_click_text(handle, ["登出"], sleep_time=8)
         while not find_image_center(handle, ["./img/common/startgame.png"]):
                 time.sleep(1)
         change_network_state(handle=handle)
@@ -700,4 +704,10 @@ def SL_equip(handle:HANDLE, ocr=None, target_suit=Eternal_suit):
 
 if __name__ == '__main__':
     handle = get_handle()
-    ocr = hub.Module(name="ch_pp-ocrv3", enable_mkldnn=False)
+    # find_and_click_text(handle, ["开始游戏"], region=((0, 0.3), (1, 0.9)),debug=True)
+    # find_text_center(handle, ["37"], region=((0, 0), (1, 0.35)),debug=True)
+    # SL_body(handle,star=0)
+    # save_staute(handle)
+    # SL_basic(handle)
+    # find_text_center(handle, ["阶位"],debug=True)
+    SL_equip(handle)
