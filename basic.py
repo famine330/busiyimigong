@@ -12,7 +12,7 @@ import cv2
 
 from PyQt5.QtWidgets import QApplication
 from paddleocr import PaddleOCR, draw_ocr
-from PIL import Image
+from PIL import Image, ImageGrab
 import qimage2ndarray
 
 import numpy as np
@@ -29,7 +29,8 @@ class HANDLE():
     def __init__(self, handle_id) -> None:
         self.handle_id = handle_id       # 句柄ID
         self.left, self.top, self.right, self.bottom = win32gui.GetWindowRect(self.handle_id)    # 窗口长宽高
-        self.ocr = PaddleOCR(lang="ch", use_angle_cls=False, use_gpu=False, det_model_dir="./ch_PP-OCRv4_det_server_infer", rec_model_dir="./ch_PP-OCRv4_rec_server_infer", enable_mkldnn=True)
+        # self.ocr = PaddleOCR(lang="ch", use_angle_cls=False, use_gpu=False, det_model_dir="./ch_PP-OCRv4_det_server_infer", rec_model_dir="./ch_PP-OCRv4_rec_server_infer", enable_mkldnn=True)
+        self.ocr = PaddleOCR(lang="ch", use_angle_cls=False, use_gpu=False, enable_mkldnn=True)
 
 
 
@@ -53,174 +54,101 @@ def get_mumu_handle(FrameTitle = "不思议迷宫"):
         return None
 
 
-# 调用mumu模拟器的录制文件
-def load_mumu_video(handle:HANDLE, path):
-    resolution_x, resolution_y = handle.right-handle.left, handle.bottom-handle.top
-
-    # with open(path, "r", encoding='gb18030', errors='ignore') as f:
-    with open(path, "r", encoding='utf-8') as f:
-        data = f.read()
-        actions = eval(data)['actions']
-
-        # 遍历每一次动作
-        for ele in actions[1:-1]:
-            # print(ele)
-            ele_data = ele['data']
-            timing = int(ele['timing'])//1000+1
-            # print(f"休息{timing}秒")
-            time.sleep(timing)
-            if ele_data[:9]=='press_rel':
-
-                point_str = ele_data.split(":")[1][1:-1]
-                dx, dy = list(map(float, point_str.split(",")))
-                x, y = int(dx*resolution_x), int(dy*resolution_y)
-                left_mouse_click(handle, (x, y))
-                print(f"点击({x},{y})")
-
-
-
-
 # 模拟鼠标左键点击
-def left_mouse_click(handle:HANDLE, point:tuple, normalize=False, size=(0, 0))->None:
-    if normalize:
-        # resolution_x, resolution_y = handle.right-handle.left, handle.bottom-handle.top   # 没有截图之前
-        # resolution_x, resolution_y = 519, 923                                             # 截图之后变为图像大小
-        size = (handle.right-handle.left, handle.bottom-handle.top)
-        new_point = (int(point[0]*size[0]), int(point[1]*size[1]))
-    else:
-        new_point = point
+def left_mouse_click(handle:HANDLE, point:tuple)->None:
 
-    print(new_point)
-    position = win32api.MAKELONG(new_point[0], new_point[1])
+    print(point)
+    position = win32api.MAKELONG(point[0], point[1])
     win32api.SendMessage(handle.handle_id, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, position)
     win32api.SendMessage(handle.handle_id, win32con.WM_LBUTTONUP, win32con.MK_LBUTTON, position)
     return 
+def imread(handle: HANDLE, img_path):
+    img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)  # 读取灰度图像
+    default_h = 1280
+    default_w = 720
 
+    handle_h = handle.bottom - handle.top
+    handle_w = handle.right - handle.left
 
-# handle-句柄; 获取截图(实时画面截图，以屏幕像素点为准)，可选转灰
-def get_screenshot(handle:HANDLE):
-    # Qt5截图
-    app = QApplication(sys.argv)
-    screen = QApplication.primaryScreen()
-    img = screen.grabWindow(handle.handle_id).toImage()
-    # Qimage转ndarray
-    img_z = qimage2ndarray.rgb_view(img)
+    # 使用合适的插值方法进行缩放
+    img = cv2.resize(img, (int(img.shape[1] * handle_w / default_w), int(img.shape[0] * handle_h / default_h)), interpolation=cv2.INTER_AREA)
 
-    # 调整图像大小以匹配目标分辨率
-    img_z = cv2.resize(img_z, (handle.right-handle.left, handle.bottom-handle.top))      # 图片转成100%分辨率大小
-
-
-    img_z = cv2.cvtColor(img_z, cv2.COLOR_BGR2RGB)  # BGR转RGB
-    img_g = cv2.cvtColor(img_z, cv2.COLOR_BGR2GRAY)  # BGR转灰度
-    return img_g, img_z   # 返回灰度图，色彩图
-
-
-# #  伪IOU计算，两点之间差10即可   true相距远保留
-# def ComputeIOU(box1, box2)->bool:
-#     return True if (box1[0]-box2[0])**2+(box1[1]-box2[1])**2>distance_threshold else False
-
-
-# # 没想到这里也要用到nms...
-# def nms(dets, h, w):
-#     dets.sort(key=lambda x:x[2])   # 根据值进行排序
-#     dets = np.array(dets)
-#     pick_bboxes = []
-#     while dets.shape[0]:
-#         bbox = dets[-1]   # 取最大conf的dt
-#         keep_index = np.array([ComputeIOU(bbox, box) for box in dets[:-1]]+[False])
-#         dets = dets[keep_index]    
-
-#         pick_bboxes.append((int(bbox[0]+w/2), int(bbox[1]+h/2)))
-    
-#     return pick_bboxes
-
-
-
-# def match_template(handle:HANDLE, img_template_list, match_threshold=0.8):
-#     img_bottom, _ = get_screenshot(handle) 
-
-#     dts = []
-#     for img_template in img_template_list:
-#         # 彩色图转灰度图
-#         if img_template.ndim ==3:
-#             img_template = cv2.cvtColor(img_template, cv2.COLOR_BGR2GRAY)
-
-#         h, w = img_template.shape[:2]
-#         # 模板匹配
-#         match = cv2.matchTemplate(img_bottom, img_template, cv2.TM_CCOEFF_NORMED)
-
-#         rows, cols = np.where(match > match_threshold)  # (2, len)  第一行x，第二行y
-
-#         for i in range(len(rows)):
-#             dts.append((cols[i], rows[i], match[rows[i], cols[i]]))
-
-#     # 做nms
-#     nms_dts = nms(dts, h=h, w=w)
-
-#     # 调试
-#     # for ele in nms_dts:
-#     #     cv2.circle(img_bottom, ele, 10, (0, 0, 255), 4)
-#     # cv2.imshow("1a", img_bottom)
-#     # cv2.waitKey(0)
-#     # cv2.destroyAllWindows()
-#     return nms_dts
-
-def find_and_click_image_from_screen(template_path, confidence=0.7, region=None, debug=True):
-    """
-    在屏幕上找到指定图像并点击。
-
-    :param template_path: 模板图像的路径
-    :param confidence: 匹配的置信度阈值
-    :param region: 指定屏幕范围 (left, top, width, height)
-    :param debug: 是否启用调试模式
-    """
-    # 读取模板图像
-    template = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
-    if template is None:
-        print(f"无法读取模板图像: {template_path}")
-        return
-
-    # 获取屏幕截图
-    if region:
-        screenshot = pyautogui.screenshot(region=region)
-    else:
-        screenshot = pyautogui.screenshot()
-
-    screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
-
-    # 使用模板匹配
-    result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-
-    # 如果匹配度超过阈值，则点击图像中心
-    if max_val >= confidence:
-        h, w = template.shape
-        center_x = max_loc[0] + w // 2
-        center_y = max_loc[1] + h // 2
-
-        # 如果指定了region，需要将坐标转换为屏幕上的绝对坐标
-        if region:
-            center_x += region[0]
-            center_y += region[1]
-
-        print(f"找到图像，中心位置: ({center_x}, {center_y}), 匹配度: {max_val:.4f}")
-        pyautogui.click(center_x, center_y)
-        
-        # 调试代码：在截图上绘制矩形框
-        if debug:
-            bottom_right = (max_loc[0] + w, max_loc[1] + h)
-            cv2.rectangle(screenshot, max_loc, bottom_right, (0, 255, 0), 2)
-            cv2.imshow("Matched Region", screenshot)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-
-        return (center_x, center_y)
-    else:
-        print(f"未找到图像，最大匹配度: {max_val:.4f}")
+    # 检查图像类型
+    if img.dtype != np.uint8:
+        print(f"模板图像类型错误: {img.dtype}")
         return None
 
+    return img
 
-def find_image_center(handle: HANDLE, template_paths, match_threshold=0.7, timeout=10, interval=0.1, debug=False):
+# handle-句柄; 获取截图(实时画面截图，以屏幕像素点为准)，可选转灰
+def get_screenshot(handle: HANDLE, debug=False):
+    # 获取窗口的边界
+    left, top, right, bottom = handle.left, handle.top, handle.right, handle.bottom
+    
+    # 使用PIL库捕获指定区域的截图
+    screenshot = ImageGrab.grab(bbox=(left, top, right, bottom))
+    
+    # 将PIL图像转换为numpy数组
+    raw_color_img = np.array(screenshot)
+    
+    color_img = cv2.cvtColor(raw_color_img, cv2.COLOR_BGR2RGB)  # BGR转RGB
+    gray_img = cv2.cvtColor(raw_color_img, cv2.COLOR_BGR2GRAY)  # BGR转灰度
+    if debug:
+        # 显示截图（可选）
+        cv2.imshow('Gray Image', gray_img)
+        cv2.imshow('Color Image', color_img)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        print(f"截图分辨率: {gray_img.shape}")
+    
+    return gray_img, color_img  # 返回灰度图，色彩图
+
+
+def nms(dets, thresh=0.7):
+    """
+    非极大值抑制
+
+    :param dets: 检测结果列表，每个元素为 (x1, y1, x2, y2, score)
+    :param thresh: 阈值
+    :return: 去除重叠的检测结果
+    """
+    if len(dets) == 0:
+        return []
+
+    # 按置信度排序
+    dets = sorted(dets, key=lambda x: x[4], reverse=True)
+    keep = []
+    while dets:
+        det = dets.pop(0)
+        keep.append(det)
+        suppress = []
+        for other_det in dets:
+            # 计算两个矩形的交集面积
+            x1 = max(det[0], other_det[0])
+            y1 = max(det[1], other_det[1])
+            x2 = min(det[2], other_det[2])
+            y2 = min(det[3], other_det[3])
+            w = max(0, x2 - x1)
+            h = max(0, y2 - y1)
+            inter = w * h
+
+            # 计算两个矩形的面积
+            det_area = (det[2] - det[0]) * (det[3] - det[1])
+            other_det_area = (other_det[2] - other_det[0]) * (other_det[3] - other_det[1])
+
+            # 计算交并比（IoU）
+            iou = inter / (det_area + other_det_area - inter)
+
+            # 如果IoU大于阈值，则抑制该检测结果
+            if iou > thresh:
+                suppress.append(other_det)
+        dets = [d for d in dets if d not in suppress]
+
+    return keep
+
+
+
+def find_image_center(handle: HANDLE, template_paths, match_threshold=0.85, timeout=10, interval=0.1, debug=True, ROI=None):
     """
     在指定句柄的窗口中找到指定图像并返回中心坐标。
 
@@ -232,20 +160,11 @@ def find_image_center(handle: HANDLE, template_paths, match_threshold=0.7, timeo
     :param debug: 是否启用调试模式
     :return: 图像中心坐标 (x, y) 或 None 如果未找到图像
     """
-
-    default_h = 1280
-    default_w = 720
-
-    handle_h = handle.bottom-handle.top
-    handle_w = handle.right-handle.left
     
     start_time = time.time()
     print("开始查找图像")
     
-    templates = [cv2.resize(cv2.imread(template_path, cv2.IMREAD_GRAYSCALE), 
-                            (int(cv2.imread(template_path, cv2.IMREAD_GRAYSCALE).shape[1] * handle_w / default_w), 
-                             int(cv2.imread(template_path, cv2.IMREAD_GRAYSCALE).shape[0] * handle_h / default_h))) 
-                 for template_path in template_paths]
+    templates = [imread(handle, template_path) for template_path in template_paths]
     if any(template is None for template in templates):
         print("错误: 无法读取所有模板图像")
         return None
@@ -256,61 +175,87 @@ def find_image_center(handle: HANDLE, template_paths, match_threshold=0.7, timeo
 
     while time.time() - start_time < timeout:
         try:
-            _, img = get_screenshot(handle)
-            gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # 确保截图是灰度图
+            gray_img, _ = get_screenshot(handle)
+            
+            # 检查图像类型
+            if gray_img.dtype != np.uint8:
+                print(f"截图图像类型错误: {gray_img.dtype}")
+                return None
+            
+            # 如果提供了ROI参数，则裁剪图像
+            if ROI is not None:
+                x, y, w, h = ROI
+                gray_img = gray_img[x:x+w, y:y+h]
 
-
+            detections = []
             for template_path, template in zip(template_paths, templates):
+                if template is None:
+                    print(f"模板图像 {template_path} 为空")
+                    continue
+
                 result = cv2.matchTemplate(gray_img, template, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
-                if max_val > best_match_val:
-                    best_match_val = max_val
-                    best_match = max_loc
-                    best_template = template
-                    best_template_path = template_path
+                if max_val > match_threshold:
+                    h, w = template.shape[:2]
+                    top_left = max_loc
+                    bottom_right = (top_left[0] + w, top_left[1] + h)
+                    detections.append((top_left[0], top_left[1], bottom_right[0], bottom_right[1], max_val))
 
-            if best_match_val >= match_threshold:
+            # 应用非极大值抑制
+            if detections:
+                detections = nms(detections, thresh=0.7)
+
+            if detections:
+                best_match = detections[0][:2]  # 取第一个最佳匹配的左上角坐标
+                best_match_val = detections[0][4]
+                best_template_path = template_paths[0]
+
                 print("找到！！！")
-                if debug:
-                    print(f"匹配图像: {best_template_path}, 匹配度: {best_match_val:.4f}")
                 # 获取匹配区域的左上角坐标
-                if best_match is not None:  # 检查 best_match 是否为 None
-                    top_left = best_match
-                    # 获取模板图像的宽度和高度
-                    h, w = best_template.shape[:2]
-                    # 计算中心位置
-                    center_x = top_left[0] + w // 2
-                    center_y = top_left[1] + h // 2
+                top_left = best_match
+                # 获取模板图像的宽度和高度
+                h, w = templates[0].shape[:2]
+                # 计算中心位置
+                center_x = top_left[0] + w // 2
+                center_y = top_left[1] + h // 2
+                
+                if ROI is not None:
+                    center_x += ROI[0]
+                    center_y += ROI[1]
+                
 
-                    # 调试代码：在截图上绘制矩形框
-                    if debug:
-                        bottom_right = (top_left[0] + w, top_left[1] + h)
-                        cv2.rectangle(img, top_left, bottom_right, (0, 255, 0), 2)
-                        cv2.imshow("Matched Region", img)
-                        cv2.waitKey(0)
-                        cv2.destroyAllWindows()
-
-                    return (center_x, center_y)
+                # 调试代码：在截图上绘制矩形框
+                if debug:
+                    print(f"图像中心坐标为:({center_x}, {center_y})")          
+                    print(f"匹配图像: {best_template_path}, 匹配度: {best_match_val:.3f}")
+                    bottom_right = (top_left[0] + w, top_left[1] + h)
+                    cv2.rectangle(gray_img, top_left, bottom_right, (0, 0, 0), 2)
+                    # 可视化调试：在截图上绘制ROI区域的矩形框
+                    cv2.imshow("Matched Region", gray_img)
+                    cv2.waitKey(0)
+                    cv2.destroyAllWindows()
+                    
+                return (center_x, center_y)
         except Exception as e:
             print(f"发生错误: {e}")
         
         time.sleep(interval)  # 等待0.1秒后再进行下一次尝试
 
     print("超时未找到匹配图像")
-    return None
+    return ()
 
 
-def find_and_click_image(handle: HANDLE, template_paths, sleep_time=0, match_threshold=0.85, timeout=10, interval=0.1, debug=False):
+def find_and_click_image(handle: HANDLE, template_paths, sleep_time=0, match_threshold=0.85, timeout=10, interval=0.1, debug=True, ROI=None):
     try:
-        det_pos = find_image_center(handle, template_paths, match_threshold, timeout, interval, debug)
+        det_pos = find_image_center(handle, template_paths, match_threshold, timeout, interval, debug, ROI)
         left_mouse_click(handle, det_pos)
         time.sleep(sleep_time)
     except Exception as e:
         print(f"发生错误: {e}")
 
 
-def find_text_center(handle: HANDLE, tar_txts, timeout=5, interval=1, debug=False, region=None):
+def find_text_center(handle: HANDLE, tar_txts, timeout=5, interval=1, debug=False, ROI=None):
     start_time = time.time()
     print(f"开始查找{tar_txts}")
 
@@ -320,17 +265,12 @@ def find_text_center(handle: HANDLE, tar_txts, timeout=5, interval=1, debug=Fals
             h, w, _ = img.shape
             
             # 根据region参数裁剪图像
-            if region:
-                # 将相对坐标转换为像素坐标
-                x1, y1 = int(region[0][0] * w), int(region[0][1] * h)
-                x2, y2 = int(region[1][0] * w), int(region[1][1] * h)
-                img = img[y1:y2, x1:x2]
-                if debug:
-                    print(f"裁剪区域: ({x1}, {y1}, {x2}, {y2})")
-            
+            if ROI is not None:
+                x, y, w, h = ROI
+                img = img[x:x+w, y:y+h]
+
             result = handle.ocr.ocr(img)
-            if debug:
-                print(f"检测到文本：{result}")
+
             
             if len(result[0]) > 0:
                 for item in result[0]:
@@ -355,11 +295,12 @@ def find_text_center(handle: HANDLE, tar_txts, timeout=5, interval=1, debug=Fals
                         center_y = (y1 + y2) // 2
                         
                         # 如果指定了region，需要将坐标转换为原始图像上的绝对坐标
-                        if region:
-                            center_x += x1
-                            center_y += y1
+                        if ROI is not None:
+                            center_x += x
+                            center_y += y
                         
                         if debug:
+                            print(f"文本中心坐标为:({center_x}, {center_y})")
                             result = result[0]
                             image = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
                             boxes = [line[0] for line in result]
@@ -368,7 +309,7 @@ def find_text_center(handle: HANDLE, tar_txts, timeout=5, interval=1, debug=Fals
                             im_show = draw_ocr(image, boxes, txts, scores, font_path='/path/to/PaddleOCR/doc/fonts/simfang.ttf')
                             im_show = Image.fromarray(im_show)
                             im_show.save('result.jpg')
-                            
+                        
                         return (int(center_x), int(center_y))
             else:
                 continue
@@ -399,18 +340,18 @@ def push_one_squence(handle: HANDLE):
         find_and_click_text(handle=handle, tar_txts=["治疗术", "石肤术", "祝福术"])
         print("""使用了[治疗术", "石肤术", "祝福术"]中的一个""")
 
-# 截图默认在（1280， 720下截图，读取图片时候做大小变换）, 不然模板匹配的时候会出错
-def imread(handle:HANDLE, img_path):
-    img = cv2.imread(img_path)
-    default_h = 1280
-    default_w = 720
+# # 截图默认在（1280， 720下截图，读取图片时候做大小变换）, 不然模板匹配的时候会出错
+# def imread(handle:HANDLE, img_path):
+#     img = cv2.imread(img_path)
+#     default_h = 1280
+#     default_w = 720
 
-    handle_h = handle.bottom-handle.top
-    handle_w = handle.right-handle.left
+#     handle_h = handle.bottom-handle.top
+#     handle_w = handle.right-handle.left
 
-    img = cv2.resize(img, (int(img.shape[1]*handle_w/default_w), int(img.shape[0]*handle_h/default_h)))
+#     img = cv2.resize(img, (int(img.shape[1]*handle_w/default_w), int(img.shape[0]*handle_h/default_h)))
 
-    return img
+#     return img
 
 
 # # 坐标转换，将几行几列(从1开始)变成点击坐标(坐标xy颠倒)
@@ -430,7 +371,7 @@ def imread(handle:HANDLE, img_path):
 # 小sl
 def SL_basic(handle:HANDLE):
     # basic.load_mumu_video(self.handle, "./img/mumu_video/小xl.mmor")
-    find_and_click_image(handle, ["./img/common/setting.png"])
+    find_and_click_image(handle, ["./img/common/setting.png"], ROI=(0.0, 0.0, 1.0, 0.1))
     find_and_click_image(handle, ["./img/common/account.png"])
     time.sleep(1)
     find_and_click_text(handle, ["登出"], sleep_time=5)
@@ -704,10 +645,13 @@ def SL_equip(handle:HANDLE, target_suit=Eternal_suit):
 
 if __name__ == '__main__':
     handle = get_handle()
+    # find_image_center(handle, ["./img/common/test.png"], ROI=(50, 50, 500, 500))
+    find_text_center(handle, ["星期五"], debug=True, ROI=(10, 10, 500, 500))
+    # gray_img, color_img = get_screenshot(handle, True)
     # find_and_click_text(handle, ["开始游戏"], region=((0, 0.3), (1, 0.9)),debug=True)
     # find_text_center(handle, ["37"], region=((0, 0), (1, 0.35)),debug=True)
     # SL_body(handle,star=0)
     # save_staute(handle)
     # SL_basic(handle)
     # find_text_center(handle, ["阶位"],debug=True)
-    SL_equip(handle)
+    # SL_equip(handle)
