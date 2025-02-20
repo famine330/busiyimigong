@@ -71,6 +71,7 @@ v1.0.0 2025-01-07 基础功能实现
 📄 许可协议
 MIT License
 
-🙏 致谢
+### 🙏 致谢
+
 基于 (<https://github.com/ljy65535/busiyimigong/tree/master> "ljy65535/busiyimigong") 二次开发
 (<https://paddlepaddle.github.io/PaddleOCR/latest/index.html> "PaddleOCR")提供文字识别支持
