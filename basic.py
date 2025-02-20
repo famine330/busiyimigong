@@ -594,7 +594,8 @@ def use_death_ripper(handle):
 # 小sl
 def SL_basic(handle: HANDLE):
     # basic.load_mumu_video(self.handle, "./img/mumu_video/小xl.mmor")
-    time.sleep(1)
+    while not find_image_center(handle, ["./img/common/open_door.png"]):
+        time.sleep(1)
     left_mouse_click(
         handle, [(back_to_before(handle, 644), back_to_before(handle, 42))]
     )
@@ -619,7 +620,8 @@ def SL_basic(handle: HANDLE):
 
 # 暂离
 def save_staute(handle: HANDLE):
-    time.sleep(1)
+    while not find_image_center(handle, ["./img/common/open_door.png"]):
+        time.sleep(1)
     left_mouse_click(handle, [(back_to_before(handle, 64), back_to_before(handle, 42))])
     find_and_click_text(handle, ["暂离"])
     find_and_click_text(handle, ["确定"])
@@ -860,6 +862,8 @@ def SL_equip(handle: HANDLE, target_suit=Eternal_suit):
     ops = 0
     while ops < 101:
         print(f"这是第{ops}次黑装备     " * 4)
+        while not find_image_center(handle, ["./img/common/open_door.png"]):
+            time.sleep(1)
         save_staute(handle)
         print("检查是否断网")
         change_network_state(handle=handle)
