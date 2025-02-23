@@ -353,7 +353,7 @@ def find_image_center(
 def find_and_click_image(
     handle: HANDLE,
     template_paths,
-    sleep_time=0.5,
+    sleep_time=1,
     match_threshold=0.80,
     timeout=10,
     interval=1,
@@ -488,7 +488,7 @@ def find_and_click_text(
     timeout=10,
     interval=1,
     debug=False,
-    sleep_time=0.5,
+    sleep_time=1,
     continue_flag=False,
     ROI=None,
 ):
@@ -594,7 +594,7 @@ def use_death_ripper(handle):
 # 小sl
 def SL_basic(handle: HANDLE):
     # basic.load_mumu_video(self.handle, "./img/mumu_video/小xl.mmor")
-    while not find_image_center(handle, ["./img/common/open_door.png"]):
+    while not find_image_center(handle, ["./img/common/equip_pack.png"]):
         time.sleep(1)
     left_mouse_click(
         handle, [(back_to_before(handle, 644), back_to_before(handle, 42))]
@@ -602,42 +602,24 @@ def SL_basic(handle: HANDLE):
     find_and_click_image(handle, ["./img/common/account.png"])
     find_and_click_text(handle, ["登出"])
     find_and_click_text(handle, ["开始游戏"], timeout=60)
-    find_and_click_text(handle, ["确定"])
-    find_and_click_text(handle, ["继续冒险"])
-    time.sleep(2)
-    while True:
-        if (
-            len(
-                find_image_center(
-                    handle, ["./img/common/setting.png"], match_threshold=0.8
-                )
-            )
-            > 0
-        ):
-            time.sleep(1)
-            break
+    while not find_text_center(handle, ["确定", "继续冒险"]):
+        time.sleep(1)
+    while not find_image_center(handle, ["./img/common/equip_pack.png"]):
+        find_and_click_text(handle, ["继续冒险"], timeout=1)
+        find_and_click_text(handle, ["确定"], timeout=1)
 
 
 # 暂离
 def save_staute(handle: HANDLE):
-    while not find_image_center(handle, ["./img/common/open_door.png"]):
+    while not find_image_center(handle, ["./img/common/equip_pack.png"]):
         time.sleep(1)
     left_mouse_click(handle, [(back_to_before(handle, 64), back_to_before(handle, 42))])
     find_and_click_text(handle, ["暂离"])
-    find_and_click_text(handle, ["确定"])
-    find_and_click_text(handle, ["暂离"], ROI=(375, 0, 350, 400))
-    time.sleep(2)
-    while True:
-        if (
-            len(
-                find_image_center(
-                    handle, ["./img/common/setting.png"], match_threshold=0.8
-                )
-            )
-            > 0
-        ):
-            time.sleep(1)
-            break
+    while not find_text_center(handle, ["确定", "暂离"]):
+        time.sleep(1)
+    while not find_image_center(handle, ["./img/common/equip_pack.png"]):
+        find_and_click_text(handle, ["暂离"], timeout=1, ROI=(375, 0, 350, 400))
+        find_and_click_text(handle, ["确定"], timeout=1)
 
 
 # 执行一次断网，再执行联网
@@ -908,6 +890,8 @@ def SL_equip(handle: HANDLE, target_suit=Eternal_suit):
 
     else:
         print("超过了101次，需要大SL")
+        while not find_image_center(handle, ["./img/common/open_door.png"]):
+            time.sleep(1)
         left_mouse_click(
             handle, [(back_to_before(handle, 644), back_to_before(handle, 44))]
         )
@@ -1031,7 +1015,7 @@ if __name__ == "__main__":
 
     # change_network_state(handle)
     # SL_basic(handle)
-    # save_staute(handle)
+    save_staute(handle)
     # push_one_squence(handle)
     # print(get_sunshine_star_number(handle))
     # print(get_health_max(handle))
@@ -1039,4 +1023,4 @@ if __name__ == "__main__":
     # SL_pool(handle)
     # print(get_lack_equipment(handle, equip_dict=Eternal_suit))
     # SL_equip(handle)
-    use_quake(handle)
+    # use_quake(handle)

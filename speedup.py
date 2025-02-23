@@ -118,15 +118,16 @@ def float_to_hex_bytes(
     return hex_bytes
 
 
-# 示例使用
-process_name = "MuMuVMMHeadless.exe"  # 替换为目标进程名称
-pattern = "90 B3 16 04 00 00 00 00 ?? ?? ?? ?? 05 00 00 00 05 00 00 00 00 00"
-# "00 00 00 00 00 00 00 00 90 B3 16 04 00 00 00 00 DF 01 00 00 05 00 00 00 05 00 00 00 00 00 A0 40"
-modify_offset = 22  # 80 3F 在特征码中的偏移量
-new_value = "A0 40"  # 要修改的新值
-### "80 3F" 是 初始速度
-### "00 40" 是 二倍速
-### "A0 40" 是 五倍速
+if __name__ == "__main__":
+    # 示例使用
+    process_name = "MuMuVMMHeadless.exe"  # 替换为目标进程名称
+    pattern = "90 B3 16 04 00 00 00 00 ?? ?? ?? ?? 05 00 00 00 05 00 00 00 00 00"
+    # "00 00 00 00 00 00 00 00 90 B3 16 04 00 00 00 00 DF 01 00 00 05 00 00 00 05 00 00 00 00 00 A0 40"
+    modify_offset = 22  # 80 3F 在特征码中的偏移量
+    new_value = "A0 40"  # 要修改的新值
+    ### "80 3F" 是 初始速度
+    ### "00 40" 是 二倍速
+    ### "A0 40" 是 五倍速
 
-address = find_and_modify_pattern(process_name, pattern, modify_offset, new_value)
-print(address)
+    address = find_and_modify_pattern(process_name, pattern, modify_offset, new_value)
+    print(address)
